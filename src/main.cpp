@@ -5,7 +5,7 @@ uint32_t configAdcContinuo(uint32_t fs);
 
 HardwareTimer tim1(TIM1);
 
-static volatile uint32_t fs=1000;
+static volatile uint32_t fs=10'000;
 
 void setup() {
   Serial.begin();
