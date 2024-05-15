@@ -5,12 +5,14 @@ uint32_t configAdcContinuo(uint32_t fs);
 
 HardwareTimer tim1(TIM1);
 
+static volatile uint32_t fs=1000;
+
 void setup() {
   Serial.begin();
   analogReadResolution(12);
   pinMode(LED_BUILTIN,OUTPUT);
   (void)analogRead(PA0);
-  configAdcContinuo(1000);
+  fs=configAdcContinuo(fs);
 }
 
 int copiaLecturas(uint16_t *buffer,int longitudBuffer);
@@ -51,10 +53,10 @@ uint32_t configAdcContinuo(uint32_t fs)
               |(_VAL2FLD(ADC_CR2_EXTTRIG,1))
               |ADC_CR2_ADON;
   ADC1->CR1 |= ADC_CR1_EOCIE;
-  RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
 
-  const uint32_t tfreq = tim1.getTimerClkFreq(); 
-  const uint32_t div = tfreq/fs; 
+  uint32_t ftimer = 2*fs;
+  const uint32_t fref = tim1.getTimerClkFreq(); 
+  const uint32_t div = fref/ftimer; 
   uint32_t pscDiv = 1;
   uint32_t tmrDiv = div;
   while(tmrDiv > 65536){
@@ -64,11 +66,12 @@ uint32_t configAdcContinuo(uint32_t fs)
   if (!tmrDiv) tmrDiv = 1;
   tim1.setPrescaleFactor(pscDiv);
   tim1.setOverflow(tmrDiv,TICK_FORMAT);
-  tim1.setCaptureCompare(1,(tmrDiv-1)/2,TICK_COMPARE_FORMAT);
+  tim1.setCaptureCompare(1,tmrDiv/2,TICK_COMPARE_FORMAT);
   tim1.setMode(1,TIMER_OUTPUT_COMPARE_TOGGLE,NC);
   tim1.resume();
   NVIC_EnableIRQ(ADC1_2_IRQn);
-  return tfreq/(tmrDiv*pscDiv);
+  ftimer = fref/(tmrDiv*pscDiv);
+  return ftimer/2;
 }
 
 extern "C"{
@@ -94,10 +97,7 @@ int copiaLecturas(uint16_t *buffer,int longitudBuffer)
 {
   int cuenta = 0;
   while(cuenta < longitudBuffer && fifo.lectura != fifo.escritura){
-    const bool primeraPasada = !cuenta;
-    if(primeraPasada) __disable_irq();
     buffer[cuenta++] = fifo.buf[(fifo.lectura++)%LBUFF];
-    if(primeraPasada) __enable_irq();
   }
   return cuenta;
 }
