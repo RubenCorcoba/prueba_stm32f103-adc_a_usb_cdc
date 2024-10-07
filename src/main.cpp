@@ -5,10 +5,11 @@ uint32_t configAdcContinuo(uint32_t fs);
 
 HardwareTimer tim1(TIM1);
 
-static volatile uint32_t fs=10'000;
+static volatile uint32_t fs=200000;
 
 void setup() {
   Serial.begin();
+  Serial.setTimeout(10);
   analogReadResolution(12);
   pinMode(LED_BUILTIN,OUTPUT);
   (void)analogRead(PA0);
@@ -82,10 +83,9 @@ void ADC1_2_IRQHandler(void)
 {
   const uint16_t dato = ADC1->DR;
   uint16_t escritura = fifo.escritura;
-  fifo.buf[escritura++ % LBUFF] = dato;
-  fifo.escritura = escritura;
-  if (escritura - fifo.lectura > LBUFF){
-    fifo.lectura = escritura - LBUFF;
+  if (escritura - fifo.lectura < LBUFF){
+    fifo.buf[escritura++ % LBUFF] = dato;
+    fifo.escritura = escritura;
   }
 }
 
