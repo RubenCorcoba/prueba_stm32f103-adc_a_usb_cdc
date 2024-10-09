@@ -5,7 +5,7 @@ uint32_t configAdcContinuo(uint32_t fs);
 
 HardwareTimer tim1(TIM1);
 
-static volatile uint32_t fs=200'000;
+static volatile uint32_t fs=20'000;
 
 void setup() {
   Serial.begin();
@@ -21,7 +21,7 @@ bool lecturaDisponible(void);
 
 void loop() {
   static uint32_t inicio;
-  static uint8_t buffer[128];
+  static uint8_t buffer[512];
   static int posPendiente = 0;
   static int lenPendiente = 0;
 
@@ -124,7 +124,8 @@ static void copiaConEscape(uint8_t *buffer,int &cuenta,uint8_t valor){
 int creaTramaSlipLecturas(uint8_t *buffer,int longitudBuffer)
 {
   int cuenta = 0;
-  buffer[0] = 0x0C;
+  if (longitudBuffer < 1) return 0;
+  buffer[cuenta++] = 0x0C;
   while((cuenta+2) < longitudBuffer && fifo.lectura != fifo.escritura){
     const uint16_t muestra = fifo.buf[(fifo.lectura)%LBUFF];
     const uint8_t muestra_H = (muestra >> 8)&0xFF;
