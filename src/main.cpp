@@ -16,16 +16,26 @@ void setup() {
   fs=configAdcContinuo(fs);
 }
 
-int copiaLecturas(uint16_t *buffer,int longitudBuffer);
+int creaTramaSlipLecturas(uint8_t *buffer,int longitudBuffer);
 bool lecturaDisponible(void);
 
 void loop() {
   static uint32_t inicio;
-  static uint16_t buffer[512];
+  static uint8_t buffer[128];
+  static int posPendiente = 0;
+  static int lenPendiente = 0;
 
-  if (CDC_connected() && Serial.availableForWrite() && lecturaDisponible()){
-    const int numLecturas = copiaLecturas(buffer,128);
-    Serial.write((uint8_t*)buffer,numLecturas * sizeof(*buffer));
+  if (CDC_connected() && Serial.availableForWrite() && (lenPendiente || lecturaDisponible())){
+    if (!lenPendiente){
+      lenPendiente = creaTramaSlipLecturas(buffer,sizeof(buffer));
+      posPendiente = 0;
+    }
+    const int transmitido = Serial.write(buffer+posPendiente,lenPendiente);
+    posPendiente += transmitido;
+    lenPendiente -= transmitido;
+  }else if (!CDC_connected()){
+    posPendiente = 0;
+    lenPendiente = 0;
   }
   if (millis()-inicio > 500)
   {
@@ -93,11 +103,38 @@ bool lecturaDisponible(void)
 {
   return fifo.escritura != fifo.lectura;
 }
-int copiaLecturas(uint16_t *buffer,int longitudBuffer)
+
+static int byteEscape(uint8_t x){
+  return (x == 0xC || x == 0xDB);
+}
+static void copiaConEscape(uint8_t *buffer,int &cuenta,uint8_t valor){
+  switch (valor)
+  {
+  case 0xC:
+    buffer[cuenta++]=0xDB;
+    buffer[cuenta++]=0xDC;
+  break; case 0xDB:
+    buffer[cuenta++]=0xDB;
+    buffer[cuenta++]=0xDD;
+  break;default:
+    buffer[cuenta++]=valor;
+  break;
+  }
+}
+int creaTramaSlipLecturas(uint8_t *buffer,int longitudBuffer)
 {
   int cuenta = 0;
-  while(cuenta < longitudBuffer && fifo.lectura != fifo.escritura){
-    buffer[cuenta++] = fifo.buf[(fifo.lectura++)%LBUFF];
+  buffer[0] = 0x0C;
+  while((cuenta+2) < longitudBuffer && fifo.lectura != fifo.escritura){
+    const uint16_t muestra = fifo.buf[(fifo.lectura)%LBUFF];
+    const uint8_t muestra_H = (muestra >> 8)&0xFF;
+    const uint8_t muestra_L = (muestra & 0xFF);
+    const int nBytesRelleno = byteEscape(muestra_H)+byteEscape(muestra_L);
+    if (cuenta + 2 + nBytesRelleno >= longitudBuffer) break;
+    fifo.lectura++;
+    copiaConEscape(buffer,cuenta,muestra_L);
+    copiaConEscape(buffer,cuenta,muestra_H);
   }
+  buffer[cuenta++]=0x0C;
   return cuenta;
 }
