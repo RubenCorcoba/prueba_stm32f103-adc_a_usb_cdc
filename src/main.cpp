@@ -5,8 +5,9 @@ uint32_t configAdcContinuo(uint32_t fs);
 
 HardwareTimer tim1(TIM1);
 
-static volatile uint32_t fs=200'000;
-
+static uint32_t fs=50'000;
+static volatile bool conectado = false;
+static volatile bool desborde = false;
 void setup() {
   Serial.begin();
   Serial.setTimeout(10);
@@ -14,23 +15,30 @@ void setup() {
   pinMode(LED_BUILTIN,OUTPUT);
   (void)analogRead(PA0);
   fs=configAdcContinuo(fs);
+  digitalWrite(LED_BUILTIN,LOW);
 }
 
 int copiaLecturas(uint16_t *buffer,int longitudBuffer);
 bool lecturaDisponible(void);
 
 void loop() {
-  static uint32_t inicio;
   static uint16_t buffer[512];
-
-  if (CDC_connected() && Serial.availableForWrite() && lecturaDisponible()){
+  conectado = CDC_connected();
+  if (conectado && Serial.availableForWrite() && lecturaDisponible()){
     const int numLecturas = copiaLecturas(buffer,128);
-    Serial.write((uint8_t*)buffer,numLecturas * sizeof(*buffer));
+    int falta = numLecturas*sizeof(*buffer);
+    uint8_t *p = (uint8_t*)buffer;
+    while (falta > 0 && conectado){
+      const int enviado = Serial.write(p,falta);
+      conectado = CDC_connected();
+      p += enviado;
+      falta -= enviado;
+    }
+    if (falta && conectado) desborde = true; 
   }
-  if (millis()-inicio > 500)
+  if (desborde)
   {
-    inicio = millis();
-    digitalToggle(LED_BUILTIN);
+    digitalWrite(LED_BUILTIN,HIGH);
   }
 }
 
@@ -82,10 +90,18 @@ extern "C"{
 void ADC1_2_IRQHandler(void)
 {
   const uint16_t dato = ADC1->DR;
+
+  if (!conectado){
+    fifo.escritura = fifo.lectura;
+    return;
+  }
+
   uint16_t escritura = fifo.escritura;
   if (escritura - fifo.lectura < LBUFF){
     fifo.buf[escritura++ % LBUFF] = dato;
     fifo.escritura = escritura;
+  }else{
+    desborde = true;
   }
 }
 
